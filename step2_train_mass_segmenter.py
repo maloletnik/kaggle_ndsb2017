@@ -9,7 +9,7 @@ import cv2
 import numpy
 from typing import List, Tuple
 from keras.optimizers import Adam, SGD
-from keras.layers import Input, Convolution2D, MaxPooling2D, UpSampling2D, merge, BatchNormalization, SpatialDropout2D
+from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, merge, BatchNormalization, SpatialDropout2D, concatenate
 from keras.models import Model
 from keras import backend as K
 from keras.callbacks import ModelCheckpoint, Callback
@@ -79,7 +79,7 @@ class XYRange:
         return res
 
 
-def random_translate_img(img, xy_range, border_mode="constant"):
+def random_translate_img(img, xy_range, padding="constant"):
     if random.random() > xy_range.chance:
         return img
     import cv2
@@ -92,7 +92,7 @@ def random_translate_img(img, xy_range, border_mode="constant"):
     trans_matrix = numpy.float32([[1, 0, translate_x], [0, 1, translate_y]])
 
     border_const = cv2.BORDER_CONSTANT
-    if border_mode == "reflect":
+    if padding == "reflect":
         border_const = cv2.BORDER_REFLECT
 
     res = []
@@ -225,6 +225,7 @@ def dice_coef_loss(y_true, y_pred):
 class DumpPredictions(Callback):
 
     def __init__(self, dump_filelist : List[Tuple[str, str]], model_type):
+    # def __init__(self, dump_filelist, model_type):
         super(DumpPredictions, self).__init__()
         self.dump_filelist = dump_filelist
         self.batch_count = 0
@@ -316,71 +317,75 @@ def get_unet(learn_rate, load_weights_path=None) -> Model:
     filter_size = 32
     growth_step = 32
     x = BatchNormalization()(inputs)
-    conv1 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(x)
-    conv1 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(conv1)
+    conv1 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(x)
+    conv1 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
 
     pool1 = BatchNormalization()(pool1)
     filter_size += growth_step
-    conv2 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(pool1)
-    conv2 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(conv2)
+    conv2 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(pool1)
+    conv2 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(conv2)
     pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
     pool2 = BatchNormalization()(pool2)
 
     filter_size += growth_step
-    conv3 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(pool2)
-    conv3 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(conv3)
+    conv3 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(pool2)
+    conv3 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(conv3)
     pool3 = MaxPooling2D(pool_size=(2, 2))(conv3)
     pool3 = BatchNormalization()(pool3)
 
     filter_size += growth_step
-    conv4 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(pool3)
-    conv4 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(conv4)
+    conv4 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(pool3)
+    conv4 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(conv4)
     pool4 = MaxPooling2D(pool_size=(2, 2))(conv4)
     pool4 = BatchNormalization()(pool4)
 
-    conv5 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(pool4)
-    conv5 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same', name="conv5b")(conv5)
+    conv5 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(pool4)
+    conv5 = Conv2D(filter_size, (3, 3), activation='relu', padding='same', name="conv5b")(conv5)
     pool5 = MaxPooling2D(pool_size=(2, 2), name="pool5")(conv5)
     pool5 = BatchNormalization()(pool5)
 
-    conv6 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(pool5)
-    conv6 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same', name="conv6b")(conv6)
+    conv6 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(pool5)
+    conv6 = Conv2D(filter_size, (3, 3), activation='relu', padding='same', name="conv6b")(conv6)
 
     up6 = UpSampling2D(size=(2, 2), name="up6")(conv6)
-    up6 = merge([up6, conv5], mode='concat', concat_axis=3)
+    # up6 = merge([up6, conv5], mode='concat', concat_axis=3)
+    up6 = concatenate([up6, conv5], axis=3)
     up6 = BatchNormalization()(up6)
 
     # up6 = SpatialDropout2D(0.1)(up6)
     filter_size -= growth_step
-    conv66 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(up6)
-    conv66 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(conv66)
+    conv66 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(up6)
+    conv66 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(conv66)
 
-    up7 = merge([UpSampling2D(size=(2, 2))(conv66), conv4], mode='concat', concat_axis=3)
+    # up7 = merge([UpSampling2D(size=(2, 2))(conv66), conv4], mode='concat', concat_axis=3)
+    up7 = concatenate([UpSampling2D(size=(2, 2))(conv66), conv4], axis=3)
     up7 = BatchNormalization()(up7)
     # up7 = SpatialDropout2D(0.1)(up7)
 
     filter_size -= growth_step
-    conv7 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(up7)
-    conv7 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(conv7)
+    conv7 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(up7)
+    conv7 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(conv7)
 
-    up8 = merge([UpSampling2D(size=(2, 2))(conv7), conv3], mode='concat', concat_axis=3)
+    # up8 = merge([UpSampling2D(size=(2, 2))(conv7), conv3], mode='concat', concat_axis=3)
+    up8 = concatenate([UpSampling2D(size=(2, 2))(conv7), conv3], axis=3)
     up8 = BatchNormalization()(up8)
     filter_size -= growth_step
-    conv8 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(up8)
-    conv8 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(conv8)
+    conv8 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(up8)
+    conv8 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(conv8)
 
 
-    up9 = merge([UpSampling2D(size=(2, 2))(conv8), conv2], mode='concat', concat_axis=3)
+    # up9 = merge([UpSampling2D(size=(2, 2))(conv8), conv2], mode='concat', concat_axis=3)
+    up9 = concatenate([UpSampling2D(size=(2, 2))(conv8), conv2], axis=3)
     up9 = BatchNormalization()(up9)
-    conv9 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(up9)
-    conv9 = Convolution2D(filter_size, 3, 3, activation='relu', border_mode='same')(conv9)
+    conv9 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(up9)
+    conv9 = Conv2D(filter_size, (3, 3), activation='relu', padding='same')(conv9)
     # conv9 = BatchNormalization()(conv9)
 
     up10 = UpSampling2D(size=(2, 2))(conv9)
-    conv10 = Convolution2D(1, 1, 1, activation='sigmoid')(up10)
+    conv10 = Conv2D(1, (1, 1), activation='sigmoid')(up10)
 
-    model = Model(input=inputs, output=conv10)
+    model = Model(inputs=inputs, outputs=conv10)
     # model.load_weights(load_weights_path)
     # model.compile(optimizer=Adam(lr=1.0e-5), loss=dice_coef_loss, metrics=[dice_coef])
     model.compile(optimizer=SGD(lr=learn_rate, momentum=0.9, nesterov=True), loss=dice_coef_loss, metrics=[dice_coef])
@@ -426,7 +431,7 @@ def train_model(holdout, model_type, continue_from=None):
     dumper = DumpPredictions(holdout_files[::10], model_type)
     epoch_div = 1
     epoch_count = 200 if model_type == "masses" else 50
-    model.fit_generator(train_gen, len(train_files) / epoch_div, epoch_count, validation_data=holdout_gen, nb_val_samples=len(holdout_files) / epoch_div, callbacks=[checkpoint1, checkpoint2, dumper])
+    model.fit_generator(train_gen, len(train_files) / epoch_div, epoch_count, validation_data=holdout_gen, validation_steps=len(holdout_files) / epoch_div, callbacks=[checkpoint1, checkpoint2, dumper])
     shutil.copy("workdir/" + model_type +"_model_h" + str(holdout) + "_best.hd5", "models/" + model_type +"_model_h" + str(holdout) + "_best.hd5")
 
 def predict_patients(patients_dir, model_path, holdout, patient_predictions, model_type):

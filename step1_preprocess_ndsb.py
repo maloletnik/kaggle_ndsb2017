@@ -94,6 +94,9 @@ def extract_dicom_images_patient(src_dir):
 
 
 def extract_dicom_images(clean_targetdir_first=False, only_patient_id=None):
+    if not os.path.exists(settings.NDSB3_EXTRACTED_IMAGE_DIR):
+        os.mkdir(settings.NDSB3_EXTRACTED_IMAGE_DIR)
+
     print("Extracting images")
 
     target_dir = settings.NDSB3_EXTRACTED_IMAGE_DIR
